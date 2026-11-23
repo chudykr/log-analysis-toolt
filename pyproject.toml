@@ -30,3 +30,8 @@ markers = ["slow: long-running tests (deselect with -m \"not slow\")"]
 
 [tool.coverage.run]
 source = ["loganalyzer"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = false

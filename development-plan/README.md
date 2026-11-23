@@ -61,7 +61,6 @@ tests/
   test_correlator.py  test_report.py  test_cli.py  test_e2e.py
 pyproject.toml
 README.md
-.github/workflows/tests.yml
 ```
 
 ## User stories
@@ -87,7 +86,7 @@ Estimates: **S** under half a day, **M** about one day, **L** one to two days.
 US-01 ─┬─ US-02 ─┐
        ├─ US-03 ─┼─ US-05 ── US-06 ── US-07 ─┬─ US-10 ── US-09
        └─ US-04 ─┘                           │
-US-08: unit tests are written inside each story; the e2e test and CI are finished after US-07,
+US-08: unit tests are written inside each story; the e2e and volume tests are finished after US-07,
        and US-10 adds its follow-mode and long-run memory tests to the same suite.
 ```
 
@@ -145,7 +144,7 @@ Must **not** produce findings:
 ## Definition of Done (every story)
 
 - Acceptance criteria met and checked by an automated test where possible
-- `pytest` passes locally and in CI
+- `pytest --cov` passes locally (all tests run locally; no CI for now)
 - New code has unit tests; overall line coverage stays at 85% or higher
 - No new runtime dependencies (D2)
 - README updated if usage or rules changed

@@ -6,7 +6,7 @@
 
 As a **QA engineer**
 I want **automated unit tests for each module and an end-to-end test on the provided sample logs**
-so that **every change is checked against the known attacks and known false positives before it is merged**.
+so that **every change is checked locally against the known attacks and known false positives before it is committed**.
 
 ## Description
 
@@ -17,9 +17,9 @@ so that **every change is checked against the known attacks and known false posi
 | Unit | Each parser shape, rule loader validation, detector windows, correlator severity, renderers | `tests/test_*.py` | < 1 s total |
 | Integration | `cli.main([...])` in-process with temp files and `capsys` | `tests/test_cli.py` | < 1 s |
 | End-to-end | Runs `python -m loganalyzer samples/webserver.log samples/auth.log` as a **subprocess**, exactly as a user would | `tests/test_e2e.py` | ~1 s |
-| Volume smoke | Generates a 200k-line file, checks the run finishes in time and memory stays flat | `tests/test_volume.py`, marker `@pytest.mark.slow` | ~5 s, run in CI, skippable locally with `-m "not slow"` |
+| Volume smoke | Generates a 200k-line file, checks the run finishes in time and memory stays flat | `tests/test_volume.py`, marker `@pytest.mark.slow` | ~3 s, part of the full local run; skip with `-m "not slow"` for a quick check |
 
-Each story's tasks already list the unit tests they need. This story adds the shared fixtures, the e2e and volume tests, coverage, and CI.
+Each story's tasks already list the unit tests they need. This story adds the shared fixtures, the e2e and volume tests, and the coverage gate. All tests run locally; there is no CI for now (internal use).
 
 ### Shared fixtures (`tests/conftest.py`)
 
@@ -67,26 +67,32 @@ EXPECTED = {
 
 Generate 200,000 web lines (mixed normal traffic plus one brute force burst) into `tmp_path`, run the CLI as a subprocess, and assert:
 
-- it finishes in under 10 seconds on a CI runner,
+- it finishes in under 10 seconds,
 - the brute force is found,
 - peak memory, measured with `resource.getrusage` in the child on Linux/macOS, stays under 150 MB. Skip this check on Windows.
 
 This guards the "high volume" requirement without needing a benchmark setup.
 
-### Coverage and CI
+### Running the tests locally
 
-- `pytest --cov=loganalyzer --cov-report=term-missing --cov-fail-under=85`
-- Settings live in `pyproject.toml` under `[tool.pytest.ini_options]` and `[tool.coverage]`
-- GitHub Actions workflow `.github/workflows/tests.yml`: Python 3.11 and 3.12 on `ubuntu-latest`, plus 3.12 on `macos-latest`; steps are checkout → `pip install -e .[dev]` → `pytest`. Triggers: push and pull request.
+There is no CI for now: the tool is for internal use, and every test runs on a developer machine.
+
+| Command | Use |
+|---|---|
+| `pytest` | Full suite, including the volume test (about 5 s) |
+| `pytest -m "not slow"` | Quick check while coding (under 1 s) |
+| `pytest --cov` | Full suite with coverage; fails below 85% (`fail_under` in `pyproject.toml`) |
+
+- Settings live in `pyproject.toml` under `[tool.pytest.ini_options]` and `[tool.coverage]`.
+- Run `pytest --cov` before every commit. Adding CI later only means running this same command.
 
 ## Acceptance criteria
 
 1. `pytest` runs every test and passes on a clean checkout after `pip install -e .[dev]`.
 2. Cases E1–E14 are implemented and pass.
-3. Line coverage of `loganalyzer/` is 85% or higher, and CI fails below that.
-4. The volume smoke test passes in CI and can be skipped locally with `-m "not slow"`.
-5. CI runs on push and PR and shows a green check on the final commit.
-6. Breaking a default rule (for example changing the SQL injection regex so `O'Brien` matches) makes at least one e2e test fail with a readable message. Check this once by hand and note it in the PR.
+3. Line coverage of `loganalyzer/` is 85% or higher, and `pytest --cov` fails below that.
+4. The volume smoke test passes locally as part of `pytest` and can be skipped with `-m "not slow"`.
+5. Breaking a default rule (for example changing the SQL injection regex so `O'Brien` matches) makes at least one e2e test fail with a readable message. Check this once by hand and note the result in the commit message.
 
 ## Tasks
 
@@ -106,12 +112,12 @@ Implement E1–E14 in `tests/test_e2e.py` with a helper `run_cli(*args) -> Compl
 Implement the generator and the three checks above in `tests/test_volume.py`, marked `slow`.
 *Files:* `tests/test_volume.py`
 
-### T-08.5 CI workflow
-Add `.github/workflows/tests.yml` with the matrix above, and a status badge in the README.
-*Files:* `.github/workflows/tests.yml`, `README.md`
+### T-08.5 Local test commands
+Set the coverage gate (`fail_under = 85`) in `pyproject.toml` and document the three commands above in the README (US-09). No CI workflow for now.
+*Files:* `pyproject.toml`, `README.md`
 
 ### T-08.6 Mutation check by hand
-Break three things on purpose, one at a time: the SQL injection regex, the brute force `count`, and the correlation boost. Confirm a test fails each time, then revert. Record the results in the PR description. This shows the tests actually catch regressions, which matters for a QA submission.
+Break three things on purpose, one at a time: the SQL injection regex, the brute force `count`, and the correlation boost. Confirm a test fails each time, then revert. Record the results in the commit message. This shows the tests actually catch regressions, which matters for a QA submission.
 
 ## Out of scope
 

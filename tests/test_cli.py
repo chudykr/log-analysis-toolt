@@ -213,3 +213,20 @@ def test_piped_output_has_no_ansi_codes(samples_dir):
 
     assert "[CRITICAL]" in result.stdout
     assert "\033[" not in result.stdout
+
+
+def test_read_error_after_start_is_an_input_error(write_log, monkeypatch, capsys):
+    """A file that passes the start-up check but fails while reading (e.g. removed, I/O error)."""
+    import loganalyzer.cli as cli
+
+    def failing_reader(paths):
+        yield paths[0], 1, "first line"
+        raise OSError(5, "Input/output error", paths[0])
+
+    monkeypatch.setattr(cli, "read_lines", failing_reader)
+    path = write_log("a.log", ["line"])
+
+    assert main([path]) == EXIT_ERROR
+    captured = capsys.readouterr()
+    assert f"error: cannot read {path}: Input/output error" in captured.err
+    assert captured.out == ""

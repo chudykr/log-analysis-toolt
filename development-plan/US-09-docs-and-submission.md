@@ -14,7 +14,7 @@ The assessment requires a public GitHub repo with (1) the solution and a README 
 
 ### README structure
 
-1. **One-line description** and CI badge
+1. **One-line description**
 2. **Quick start**, three commands:
    ```bash
    git clone <repo> && cd log-analysis-tool
@@ -59,7 +59,7 @@ In a temp directory: `git clone`, create a fresh venv with Python 3.11, follow t
 *Test:* manual, recorded as a checklist in the final PR.
 
 ### T-09.4 Submission
-Merge to the default branch, confirm CI is green, make the repo public, and send the link.
+Run `pytest --cov` locally on the final commit and confirm it passes, merge to the default branch, make the repo public, and send the link.
 
 ## Out of scope
 
