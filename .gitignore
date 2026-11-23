@@ -58,6 +58,8 @@ cover/
 
 # Django stuff:
 *.log
+# Sample logs are test fixtures and must be committed
+!samples/*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
