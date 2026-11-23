@@ -13,10 +13,13 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from loganalyzer.models import Event, Finding
+from loganalyzer.models import MAX_CONTEXT, SSH_ACCEPTED, SSH_CLOSED, Event, Finding
 from loganalyzer.rules import PatternRule, Rule, ThresholdRule
 
 SWEEP_EVERY = 10_000  # events between sweeps of idle threshold state
+# Events of these kinds are kept as context for source IPs that already have a finding,
+# e.g. "Connection closed by 10.0.0.50" after a brute force.
+CONTEXT_KINDS = frozenset({SSH_ACCEPTED, SSH_CLOSED})
 
 StateKey = tuple[str, tuple[str, ...], str]  # (rule id, group key, source file)
 
@@ -55,17 +58,27 @@ class Detector:
                     self._escalation_by_kind[kind].append(rule)
         self._seen = 0
         self._latest: dict[str, datetime] = {}
+        self._flagged_ips: set[str] = set()
+        self.context: dict[str, deque] = {}  # source IP -> last MAX_CONTEXT context events
 
     # --- public API --------------------------------------------------------------------------
 
     def feed(self, event: Event) -> None:
+        before = len(self.findings)
+        used = False  # did any rule count this event?
         for rule in self._main_by_kind.get(event.kind, ()):
             if isinstance(rule, PatternRule):
-                self._pattern(rule, event)
+                used |= self._pattern(rule, event)
             elif isinstance(rule, ThresholdRule) and rule.matches(event):
                 self._threshold(rule, event)
+                used = True
         for rule in self._escalation_by_kind.get(event.kind, ()):
-            self._escalate(rule, event)
+            used |= self._escalate(rule, event)
+        for finding in self.findings[before:]:
+            if finding.key_field == "source_ip":
+                self._flagged_ips.add(finding.key)
+        if not used:
+            self._keep_context(event)
 
         latest = self._latest.get(event.source_file)
         if latest is None or event.timestamp > latest:
@@ -78,11 +91,16 @@ class Detector:
         """Findings sorted by severity (highest first), then by first time seen."""
         return sorted(self.findings, key=lambda f: (-f.severity, f.first_seen, f.rule_id, f.key))
 
+    def _keep_context(self, event: Event) -> None:
+        """Keep events no rule used, of CONTEXT_KINDS, from IPs that already have a finding."""
+        if event.kind in CONTEXT_KINDS and event.source_ip in self._flagged_ips:
+            self.context.setdefault(event.source_ip, deque(maxlen=MAX_CONTEXT)).append(event)
+
     # --- rule types --------------------------------------------------------------------------
 
-    def _pattern(self, rule: PatternRule, event: Event) -> None:
+    def _pattern(self, rule: PatternRule, event: Event) -> bool:
         if not rule.hits(event):
-            return
+            return False
         key = rule.key_of(event)
         state_key = (rule.id, key, event.source_file)
         finding = self._pattern_findings.get(state_key)
@@ -91,6 +109,7 @@ class Detector:
             self._pattern_findings[state_key] = finding
             self.findings.append(finding)
         finding.add(event)
+        return True
 
     def _threshold(self, rule: ThresholdRule, event: Event) -> None:
         key = rule.key_of(event)
@@ -129,19 +148,20 @@ class Detector:
             window.events.clear()
             window.distinct.clear()
 
-    def _escalate(self, rule: ThresholdRule, event: Event) -> None:
+    def _escalate(self, rule: ThresholdRule, event: Event) -> bool:
         escalation = rule.escalate_on
         if escalation is None or not escalation.filter.matches(event):
-            return
+            return False
         window = self._windows.get((rule.id, rule.key_of(event), event.source_file))
         if window is None or window.finding is None or window.escalated:
-            return
+            return False
         if event.timestamp - window.finding.last_seen > timedelta(seconds=rule.window_seconds):
-            return
+            return False
         window.finding.severity = max(window.finding.severity, escalation.severity)
         window.finding.escalated = True
         window.finding.add(event)
         window.escalated = True
+        return True
 
     # --- housekeeping ------------------------------------------------------------------------
 
@@ -167,7 +187,12 @@ class Detector:
 
 def detect(events: Iterable[Event], rules: Iterable[Rule]) -> list[Finding]:
     """Run every rule over the events in a single pass and return the findings."""
+    return run(events, rules).results()
+
+
+def run(events: Iterable[Event], rules: Iterable[Rule]) -> Detector:
+    """Feed every event to a new Detector and return it (findings and context)."""
     detector = Detector(rules)
     for event in events:
         detector.feed(event)
-    return detector.results()
+    return detector

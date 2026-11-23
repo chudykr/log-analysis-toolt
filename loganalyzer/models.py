@@ -15,6 +15,7 @@ KNOWN_KINDS = frozenset({HTTP_REQUEST, SSH_FAILED, SSH_ACCEPTED, SSH_CLOSED, SUD
 
 MAX_STORED_MALFORMED = 100
 MAX_EVIDENCE = 20
+MAX_CONTEXT = 5  # extra non-finding events kept per incident key
 
 
 class Severity(IntEnum):
@@ -55,6 +56,7 @@ class ParseStats:
     total_lines: int = 0
     parsed: int = 0
     malformed_count: int = 0
+    lines_per_file: dict[str, int] = field(default_factory=dict)  # non-blank lines read per file
     # Only the first MAX_STORED_MALFORMED are kept, so a broken file cannot use up memory.
     malformed: list[tuple[str, int, str]] = field(default_factory=list)
 
@@ -88,3 +90,20 @@ class Finding:
             self.first_seen = event.timestamp
         if event.timestamp > self.last_seen:
             self.last_seen = event.timestamp
+
+
+@dataclass(slots=True)
+class Incident:
+    """All findings about one actor (source IP or local user), possibly across several files."""
+
+    key: str           # "10.0.0.50" or "user:johndoe"
+    key_type: str      # "ip" or the key field name, e.g. "user"
+    severity: Severity
+    findings: list[Finding]
+    sources: list[str]  # sorted source files the findings came from
+    first_seen: datetime
+    last_seen: datetime
+    correlated: bool    # findings come from two or more files
+    summary: str
+    actions: list[str]  # de-duplicated, in finding order
+    context: list[Event] = field(default_factory=list)

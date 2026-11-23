@@ -232,6 +232,7 @@ def parse_stream(
     """Turn (file, line_no, raw) items into Events; count malformed lines in `stats`."""
     for source_file, line_no, raw in lines:
         stats.total_lines += 1
+        stats.lines_per_file[source_file] = stats.lines_per_file.get(source_file, 0) + 1
         parsed = parse_line(raw, ctx)
         if parsed is None:
             stats.record_malformed(source_file, line_no, raw)

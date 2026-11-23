@@ -15,7 +15,7 @@ def test_runs_on_both_sample_files(samples_dir, capsys):
     code = main([str(samples_dir / "webserver.log"), str(samples_dir / "auth.log"), "--year", "2025"])
 
     assert code == EXIT_FINDINGS
-    assert "Events parsed: 44   Malformed lines: 1   Findings: 10" in capsys.readouterr().out
+    assert "Events parsed: 44   Malformed lines: 1   Incidents: 6 (critical 2, high 2, medium 2)" in capsys.readouterr().out
 
 
 def test_no_arguments_is_usage_error(capsys):
@@ -123,7 +123,8 @@ def test_json_output_is_valid(samples_dir, capsys):
 
     data = json.loads(capsys.readouterr().out)
     assert code == EXIT_FINDINGS
-    assert data["stats"] == {"events": 44, "malformed": 1, "findings": 10}
+    assert data["stats"] == {"events": 44, "malformed": 1, "incidents": 6,
+                             "by_severity": {"critical": 2, "high": 2, "medium": 2, "low": 0}}
     assert data["malformed"][0]["line"] == 26
 
 
@@ -175,6 +176,40 @@ action = "Block the IP and review the database logs."
 
     code = main([str(samples_dir / "webserver.log"), "--rules", str(rules), "--json"])
 
-    findings = json.loads(capsys.readouterr().out)["findings"]
+    incidents = json.loads(capsys.readouterr().out)["incidents"]
     assert code == EXIT_FINDINGS
-    assert [(f["rule_id"], f["key"]) for f in findings] == [("sql-injection", "10.0.0.88")]
+    assert [(i["key"], [f["rule_id"] for f in i["findings"]]) for i in incidents] == [
+        ("10.0.0.88", ["sql-injection"])]
+
+
+class FakeStream:
+    def __init__(self, tty):
+        self.tty = tty
+
+    def isatty(self):
+        return self.tty
+
+
+@pytest.mark.parametrize("tty, no_color, expected", [
+    (True, False, True),
+    (True, True, False),
+    (False, False, False),
+])
+def test_color_only_for_terminals_without_no_color(monkeypatch, tty, no_color, expected):
+    from loganalyzer.cli import use_color
+
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    if no_color:
+        monkeypatch.setenv("NO_COLOR", "1")
+
+    assert use_color(FakeStream(tty)) is expected
+
+
+def test_piped_output_has_no_ansi_codes(samples_dir):
+    result = subprocess.run(
+        [sys.executable, "-m", "loganalyzer", str(samples_dir / "webserver.log"), "--year", "2025"],
+        cwd=REPO_ROOT, capture_output=True, text=True, timeout=30,
+    )
+
+    assert "[CRITICAL]" in result.stdout
+    assert "\033[" not in result.stdout

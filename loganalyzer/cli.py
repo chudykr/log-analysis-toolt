@@ -8,15 +8,16 @@ Exit codes:
 
 import argparse
 import datetime
-import json
 import os
 import sys
 from collections.abc import Sequence
 
 from loganalyzer import __version__
-from loganalyzer.detector import detect
-from loganalyzer.models import Finding, ParseStats
+from loganalyzer.correlator import correlate
+from loganalyzer.detector import run
+from loganalyzer.models import ParseStats
 from loganalyzer.parsers import ParseContext, parse_stream, read_lines
+from loganalyzer.report import render_json, render_text
 from loganalyzer.rules import RulesError, load_rules
 
 EXIT_OK = 0
@@ -93,38 +94,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     stats = ParseStats()
     try:
         events = parse_stream(read_lines(args.files), ParseContext(year=args.year), stats)
-        findings = detect(events, rules)
+        detector = run(events, rules)
     except OSError as exc:
         print(f"error: cannot read {exc.filename}: {exc.strerror}", file=sys.stderr)
         return EXIT_ERROR
 
-    # Correlation (US-06) and the full report (US-07) replace this simple output.
-    print(_render_json(findings, stats) if args.json else _render_text(findings, stats))
-    return EXIT_FINDINGS if findings else EXIT_OK
+    incidents = correlate(detector.results(), detector.context)
+    if args.json:
+        print(render_json(incidents, stats, args.files))
+    else:
+        print(render_text(incidents, stats, args.files, color=use_color(sys.stdout)))
+    return EXIT_FINDINGS if incidents else EXIT_OK
 
 
-def _render_text(findings: list[Finding], stats: ParseStats) -> str:
-    lines = [f"Events parsed: {stats.parsed}   Malformed lines: {stats.malformed_count}   Findings: {len(findings)}"]
-    if not findings:
-        lines.append("No suspicious activity found.")
-    for finding in findings:
-        where = ", ".join(f"{event.source_file}:{event.line_no}" for event in finding.evidence)
-        escalated = "  ESCALATED" if finding.escalated else ""
-        lines.append(f"[{str(finding.severity).upper()}] {finding.rule_id} {finding.key_field}={finding.key} "
-                     f"({finding.count} events){escalated}  {where}")
-    for source_file, line_no, raw in stats.malformed:
-        lines.append(f"Malformed: {source_file}:{line_no}  {raw}")
-    return "\n".join(lines)
-
-
-def _render_json(findings: list[Finding], stats: ParseStats) -> str:
-    return json.dumps({
-        "stats": {"events": stats.parsed, "malformed": stats.malformed_count, "findings": len(findings)},
-        "findings": [{
-            "rule_id": f.rule_id, "severity": str(f.severity), "key_field": f.key_field, "key": f.key,
-            "source_file": f.source_file, "count": f.count, "escalated": f.escalated,
-            "first_seen": f.first_seen.isoformat(), "last_seen": f.last_seen.isoformat(),
-            "evidence": [{"file": e.source_file, "line": e.line_no, "raw": e.raw} for e in f.evidence],
-        } for f in findings],
-        "malformed": [{"file": file, "line": line_no, "raw": raw} for file, line_no, raw in stats.malformed],
-    }, indent=2)
+def use_color(stream) -> bool:
+    """Colour only for an interactive terminal, and never when NO_COLOR is set (no-color.org)."""
+    return stream.isatty() and "NO_COLOR" not in os.environ
