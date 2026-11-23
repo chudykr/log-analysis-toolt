@@ -8,12 +8,16 @@ Exit codes:
 
 import argparse
 import datetime
+import json
 import os
 import sys
 from collections.abc import Sequence
 
 from loganalyzer import __version__
-from loganalyzer.parsers import read_lines
+from loganalyzer.detector import detect
+from loganalyzer.models import Finding, ParseStats
+from loganalyzer.parsers import ParseContext, parse_stream, read_lines
+from loganalyzer.rules import RulesError, load_rules
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
@@ -80,12 +84,47 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_ERROR
 
     try:
-        line_count = sum(1 for _ in read_lines(args.files))
+        rules = load_rules(args.rules)
+    except RulesError as exc:
+        for message in exc.errors:
+            print(f"error: {message}", file=sys.stderr)
+        return EXIT_ERROR
+
+    stats = ParseStats()
+    try:
+        events = parse_stream(read_lines(args.files), ParseContext(year=args.year), stats)
+        findings = detect(events, rules)
     except OSError as exc:
         print(f"error: cannot read {exc.filename}: {exc.strerror}", file=sys.stderr)
         return EXIT_ERROR
 
-    # Parsing (US-02, US-03), detection (US-05), correlation (US-06) and the report (US-07)
-    # plug in here. Until then the tool only reads the input and reports what it read.
-    print(f"Read {line_count} lines from {len(args.files)} file(s).")
-    return EXIT_OK
+    # Correlation (US-06) and the full report (US-07) replace this simple output.
+    print(_render_json(findings, stats) if args.json else _render_text(findings, stats))
+    return EXIT_FINDINGS if findings else EXIT_OK
+
+
+def _render_text(findings: list[Finding], stats: ParseStats) -> str:
+    lines = [f"Events parsed: {stats.parsed}   Malformed lines: {stats.malformed_count}   Findings: {len(findings)}"]
+    if not findings:
+        lines.append("No suspicious activity found.")
+    for finding in findings:
+        where = ", ".join(f"{event.source_file}:{event.line_no}" for event in finding.evidence)
+        escalated = "  ESCALATED" if finding.escalated else ""
+        lines.append(f"[{str(finding.severity).upper()}] {finding.rule_id} {finding.key_field}={finding.key} "
+                     f"({finding.count} events){escalated}  {where}")
+    for source_file, line_no, raw in stats.malformed:
+        lines.append(f"Malformed: {source_file}:{line_no}  {raw}")
+    return "\n".join(lines)
+
+
+def _render_json(findings: list[Finding], stats: ParseStats) -> str:
+    return json.dumps({
+        "stats": {"events": stats.parsed, "malformed": stats.malformed_count, "findings": len(findings)},
+        "findings": [{
+            "rule_id": f.rule_id, "severity": str(f.severity), "key_field": f.key_field, "key": f.key,
+            "source_file": f.source_file, "count": f.count, "escalated": f.escalated,
+            "first_seen": f.first_seen.isoformat(), "last_seen": f.last_seen.isoformat(),
+            "evidence": [{"file": e.source_file, "line": e.line_no, "raw": e.raw} for e in f.evidence],
+        } for f in findings],
+        "malformed": [{"file": file, "line": line_no, "raw": raw} for file, line_no, raw in stats.malformed],
+    }, indent=2)

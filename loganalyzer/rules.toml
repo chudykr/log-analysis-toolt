@@ -1,0 +1,142 @@
+# Default detection rules for loganalyzer.
+#
+# Replace this file with your own: python -m loganalyzer --rules my-rules.toml FILE...
+# Regexes use TOML literal strings ('...'), so backslashes need no escaping.
+#
+# Event kinds and their fields:
+#   http_request  method, path, path_decoded, protocol, status, size, user   (+ source_ip)
+#   ssh_failed    user, port, method, invalid_user ("true"/"false")          (+ source_ip)
+#   ssh_accepted  user, port, method                                         (+ source_ip)
+#   ssh_closed    port, preauth ("true"/"false"), user (optional)            (+ source_ip)
+#   sudo          user, target_user, command, tty, pwd                       (no source_ip)
+#   auth_other    program, message
+
+# --- Authentication attacks ------------------------------------------------------------------
+
+# Repeated failed web logins from one IP. 3 failures in a minute is well above normal typos;
+# a successful login right after makes it critical (likely compromised account).
+[[rule]]
+id = "web-login-bruteforce"
+title = "Web login brute force"
+type = "threshold"
+severity = "high"
+kinds = ["http_request"]
+where = { method = '^POST$', path = '^/login(\?|$)', status = '^401$' }
+count = 3
+window_seconds = 60
+escalate_on = { kinds = ["http_request"], where = { method = '^POST$', path = '^/login(\?|$)', status = '^2\d\d$' }, severity = "critical" }
+action = "Block the source IP, force a password reset for the targeted web account and review its recent sessions."
+
+# Repeated failed SSH passwords for existing accounts. Same reasoning as the web rule.
+[[rule]]
+id = "ssh-bruteforce"
+title = "SSH password brute force"
+type = "threshold"
+severity = "high"
+kinds = ["ssh_failed"]
+where = { invalid_user = '^false$' }
+count = 3
+window_seconds = 60
+escalate_on = { kinds = ["ssh_accepted"], severity = "critical" }
+action = "Block the source IP, reset the targeted account's password, check its SSH sessions and disable password login in favour of keys."
+
+# Login attempts for several accounts that do not exist: username guessing (test, root, ubuntu...).
+[[rule]]
+id = "ssh-invalid-users"
+title = "SSH username enumeration"
+type = "threshold"
+severity = "medium"
+kinds = ["ssh_failed"]
+where = { invalid_user = '^true$' }
+distinct = "user"
+count = 3
+window_seconds = 300
+action = "Block the source IP at the firewall and make sure root login and password authentication are disabled in sshd_config."
+
+# --- Web attacks -----------------------------------------------------------------------------
+
+# SQL injection keywords in the URL. Written to avoid plain apostrophes such as q=O'Brien.
+[[rule]]
+id = "sql-injection"
+title = "SQL injection attempt"
+type = "pattern"
+severity = "high"
+kinds = ["http_request"]
+field = "path_decoded"
+regex = '''(?i)(\bunion\b.+\bselect\b|;\s*(drop|delete|insert|update)\s|\bor\b\s+'?\d+'?\s*=\s*'?\d+|'\s*--|\bsleep\s*\(|\bwaitfor\s+delay\b)'''
+action = "Block the source IP, check the database and application logs for this request, and verify the search endpoint uses parameterised queries."
+
+# Directory traversal ("../") in the URL, also when URL-encoded.
+[[rule]]
+id = "path-traversal"
+title = "Path traversal attempt"
+type = "pattern"
+severity = "high"
+kinds = ["http_request"]
+field = "path_decoded"
+regex = '(\.\./|\.\.\\)'
+action = "Block the source IP and confirm the server did not return any file outside the web root (check response sizes for this IP)."
+
+# Several requests to /admin* refused with 403: someone looking for the admin area.
+[[rule]]
+id = "admin-probing"
+title = "Admin area probing"
+type = "threshold"
+severity = "medium"
+kinds = ["http_request"]
+where = { path = '^/admin', status = '^403$' }
+count = 3
+window_seconds = 60
+action = "Block the source IP and confirm the admin area is reachable only from trusted networks."
+
+# Many different well-known sensitive paths in a few seconds: an automated scanner.
+# Counts distinct paths, so a user reloading one page does not trigger it.
+[[rule]]
+id = "sensitive-path-scan"
+title = "Sensitive path scan"
+type = "threshold"
+severity = "medium"
+kinds = ["http_request"]
+where = { path = '^/(admin|administrator|phpmyadmin|wp-admin|wp-login\.php|\.env|\.git|config\.php|server-status)(/|\?|$)' }
+distinct = "path"
+count = 5
+window_seconds = 10
+action = "Block the source IP and check that none of the probed files (.env, config.php, ...) are publicly served."
+
+# Same IP hitting the same endpoint many times per second: scripted abuse or account creation spam.
+[[rule]]
+id = "request-flood"
+title = "Request flood on one endpoint"
+type = "threshold"
+severity = "medium"
+kinds = ["http_request"]
+group_by = ["source_ip", "method", "path"]
+count = 5
+window_seconds = 2
+action = "Rate-limit or block the source IP and check whether the requests created data (e.g. accounts via POST /api/users)."
+
+# The server itself rate-limited the client.
+[[rule]]
+id = "rate-limited"
+title = "Client was rate-limited (HTTP 429)"
+type = "pattern"
+severity = "low"
+kinds = ["http_request"]
+field = "status"
+regex = '^429$'
+action = "Review what the client was doing before it was rate-limited; repeated 429s from one IP usually mean automation."
+
+# --- Privilege use ---------------------------------------------------------------------------
+
+# sudo to root touching password/privilege files. Routine admin commands are not matched.
+[[rule]]
+id = "sensitive-sudo"
+title = "Sensitive command run as root"
+type = "pattern"
+severity = "high"
+kinds = ["sudo"]
+where = { target_user = '^root$' }
+group_by = "user"
+field = "command"
+regex = '(/etc/shadow|/etc/gshadow|/etc/sudoers|\bvisudo\b|\bpasswd\b|\bchmod\s+[0-7]*7[0-7]*\s+/|\buseradd\b|\busermod\b)'
+action = "Confirm with the user and their manager that this command was authorised; if not, lock the account and rotate any exposed credentials."

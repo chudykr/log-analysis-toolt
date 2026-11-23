@@ -18,6 +18,9 @@ loganalyzer = "loganalyzer.cli:main"
 [tool.setuptools]
 packages = ["loganalyzer"]
 
+[tool.setuptools.package-data]
+loganalyzer = ["rules.toml"]
+
 [tool.setuptools.dynamic]
 version = { attr = "loganalyzer.__version__" }
 

@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 import subprocess
 import sys
@@ -6,15 +7,15 @@ import sys
 import pytest
 
 from loganalyzer import __version__
-from loganalyzer.cli import EXIT_ERROR, EXIT_OK, main
+from loganalyzer.cli import EXIT_ERROR, EXIT_FINDINGS, EXIT_OK, main
 from tests.conftest import REPO_ROOT
 
 
 def test_runs_on_both_sample_files(samples_dir, capsys):
-    code = main([str(samples_dir / "webserver.log"), str(samples_dir / "auth.log")])
+    code = main([str(samples_dir / "webserver.log"), str(samples_dir / "auth.log"), "--year", "2025"])
 
-    assert code == EXIT_OK
-    assert "Read 45 lines from 2 file(s)." in capsys.readouterr().out
+    assert code == EXIT_FINDINGS
+    assert "Events parsed: 44   Malformed lines: 1   Findings: 10" in capsys.readouterr().out
 
 
 def test_no_arguments_is_usage_error(capsys):
@@ -75,7 +76,9 @@ def test_missing_rules_file(write_log, capsys):
 
 def test_empty_file_exits_ok(write_log, capsys):
     assert main([write_log("empty.log", "")]) == EXIT_OK
-    assert "Read 0 lines" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "Events parsed: 0" in out
+    assert "No suspicious activity found." in out
 
 
 def test_invalid_utf8_does_not_crash(tmp_path):
@@ -110,6 +113,68 @@ def test_module_entry_point_exit_codes(samples_dir):
         cwd=REPO_ROOT, capture_output=True, text=True, timeout=30,
     )
 
-    assert ok.returncode == EXIT_OK, ok.stderr
+    assert ok.returncode == EXIT_FINDINGS, ok.stderr
     assert missing.returncode == EXIT_ERROR
     assert "file not found: missing.log" in missing.stderr
+
+
+def test_json_output_is_valid(samples_dir, capsys):
+    code = main([str(samples_dir / "webserver.log"), str(samples_dir / "auth.log"), "--year", "2025", "--json"])
+
+    data = json.loads(capsys.readouterr().out)
+    assert code == EXIT_FINDINGS
+    assert data["stats"] == {"events": 44, "malformed": 1, "findings": 10}
+    assert data["malformed"][0]["line"] == 26
+
+
+def test_clean_input_exits_ok(write_log, capsys):
+    path = write_log("clean.log", [
+        '192.168.1.10 - - [03/Jul/2025:10:00:01 +0000] "GET /index.html HTTP/1.1" 200 1234',
+        '192.168.1.11 - - [03/Jul/2025:10:00:02 +0000] "GET /about.html HTTP/1.1" 200 982',
+    ])
+
+    assert main([path]) == EXIT_OK
+    assert "No suspicious activity found." in capsys.readouterr().out
+
+
+def test_invalid_rules_file_is_reported(write_log, tmp_path, capsys):
+    rules = tmp_path / "bad.toml"
+    rules.write_text("""
+[[rule]]
+id = "broken"
+title = "Broken"
+type = "pattern"
+severity = "high"
+kinds = ["http_request"]
+field = "path"
+regex = '(unclosed'
+action = "Nothing."
+""")
+
+    code = main([write_log("a.log", ["line"]), "--rules", str(rules)])
+
+    err = capsys.readouterr().err
+    assert code == EXIT_ERROR
+    assert "rule 'broken'" in err
+    assert "invalid regex" in err
+
+
+def test_custom_rules_replace_defaults(samples_dir, tmp_path, capsys):
+    rules = tmp_path / "only-sqli.toml"
+    rules.write_text("""
+[[rule]]
+id = "sql-injection"
+title = "SQL injection attempt"
+type = "pattern"
+severity = "high"
+kinds = ["http_request"]
+field = "path_decoded"
+regex = '(?i)union.+select'
+action = "Block the IP and review the database logs."
+""")
+
+    code = main([str(samples_dir / "webserver.log"), "--rules", str(rules), "--json"])
+
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert code == EXIT_FINDINGS
+    assert [(f["rule_id"], f["key"]) for f in findings] == [("sql-injection", "10.0.0.88")]
