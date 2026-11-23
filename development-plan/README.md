@@ -36,7 +36,7 @@ All stories refer to these decisions. Change them here first, then update the af
 | D9 | Exit codes | `0` / `1` / `2` as above | Usable in CI pipelines and cron jobs |
 | D10 | Tests | `pytest` (only dev dependency), `pytest-cov` for coverage; unit tests per module plus an e2e test on the sample logs | Basic but meaningful coverage |
 | D11 | Extensibility | Parsers are registered in a list; adding a format means adding one parser function and its tests | "Evolving environment" |
-| D12 | Continuous mode | Batch run is the default; `--follow`, stdin (`-`) and gzip input are opt-in. In follow mode findings are emitted as they open, escalate and close, and closed findings are dropped from memory | "Continuously" without making the simple case harder |
+| D12 | Continuous mode | For now batch only: continuous processing means scheduled runs (e.g. cron). The live mode in US-10 (`--follow`, stdin, gzip, findings as they happen) is planned but its implementation is deferred | Decided 2026-11-23: not needed for now |
 
 ## Code layout (target)
 
@@ -76,7 +76,7 @@ README.md
 | [US-07](US-07-actionable-report.md) | Read a clear, actionable report | M | US-06 |
 | [US-08](US-08-test-coverage-and-e2e.md) | Trust the tool through tests (unit + e2e) | M | runs alongside all stories; e2e after US-07 |
 | [US-09](US-09-docs-and-submission.md) | Understand and submit the tool | S | US-07 |
-| [US-10](US-10-continuous-production-mode.md) | Run continuously on live, high-volume logs | L | US-05, US-07 |
+| [US-10](US-10-continuous-production-mode.md) | Run continuously on live, high-volume logs (**planned, implementation deferred**) | L | US-05, US-07 |
 
 Estimates: **S** under half a day, **M** about one day, **L** one to two days.
 
@@ -84,10 +84,10 @@ Estimates: **S** under half a day, **M** about one day, **L** one to two days.
 
 ```
 US-01 ─┬─ US-02 ─┐
-       ├─ US-03 ─┼─ US-05 ── US-06 ── US-07 ─┬─ US-10 ── US-09
-       └─ US-04 ─┘                           │
-US-08: unit tests are written inside each story; the e2e and volume tests are finished after US-07,
-       and US-10 adds its follow-mode and long-run memory tests to the same suite.
+       ├─ US-03 ─┼─ US-05 ── US-06 ── US-07 ── US-09
+       └─ US-04 ─┘
+US-08: unit tests are written inside each story; the e2e and volume tests are finished after US-07.
+US-10: planned, implemented later (after US-09); it adds its own follow-mode and long-run memory tests.
 ```
 
 US-02, US-03 and US-04 can be worked on in parallel.
@@ -101,9 +101,9 @@ US-02, US-03 and US-04 can be worked on in parallel.
 | Detection: configurable rules | US-04, US-05 |
 | Output: clear, actionable format | US-07 |
 | Process both files and correlate findings | US-06, US-08 (e2e) |
-| Production context: high volume | D6, US-02/03 (streaming), US-05 (bounded windows), US-08 (volume smoke test), US-10 (bounded state, long-run memory test) |
-| Production context: continuously | D12, US-10 (`--follow`, stdin, gzip, rotation, findings as they happen) |
-| Production context: evolving environment | D4, D11, US-04 (rules without code changes), US-10 (warning when the log format changes) |
+| Production context: high volume | D6, US-02/03 (streaming), US-05 (bounded windows), US-08 (volume smoke test) |
+| Production context: continuously | Now: scheduled batch runs, exit codes and JSON for automation (US-01, US-07). Later: live mode, US-10 (D12) |
+| Production context: evolving environment | D4, D11, US-04 (rules without code changes), malformed lines reported (US-02/03); later US-10 (warning when the log format changes) |
 | README explaining how to run | US-09 |
 | AI conversation history | US-09 |
 
@@ -137,7 +137,7 @@ Must **not** produce findings:
 ## Known limitations (accepted for this version)
 
 - `auth.log` lines carry no year and no timezone. The tool uses `--year` (default: current year) and assumes UTC, so both files line up on the sample data. Correlation is by source IP, and the time span of each side is shown so the reader can judge.
-- In follow mode (US-10), state is kept per file and live files are not merged strictly by timestamp; correlation links them by key.
+- Batch only until US-10 is implemented. With scheduled runs, a threshold window does not span two runs.
 - No state is saved between restarts, and the tool runs as one process. Scaling beyond one machine (log shipper in front, split by source IP, JSON into a SIEM) is described in the README, not built.
 - Detection is rule-based only: no anomaly scoring and no IP reputation lookups.
 

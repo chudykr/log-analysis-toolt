@@ -1,5 +1,7 @@
 # US-10: Run continuously on live, high-volume logs
 
+> **Status: planned, implementation deferred.** Decided on 2026-11-23 that the implementation is not needed for now. Until it is built, the tool is batch-only and continuous processing means scheduled runs (see the root README, "Production notes"). Implement it only when the user asks.
+
 **Estimate:** L · **Depends on:** US-05 (detector), US-07 (output formats) · **Decisions:** D6, D9, D11, D12
 
 ## Story

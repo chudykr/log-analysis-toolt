@@ -311,13 +311,9 @@ The assessment says the tool may run "in an evolving environment processing high
   - The JSON schema is versioned.
 - **Automation:** exit codes and JSON output for scripts, cron and log pipelines.
 
-Planned in [US-10](development-plan/US-10-continuous-production-mode.md), not built yet:
+**Continuous processing is done in batches.** The tool reads files to the end and exits; it has no live `--follow` mode. To process logs continuously, run it on a schedule (e.g. cron, every few minutes, on the files rotated since the last run) and act on exit code `1` or the JSON output. One limit of this: a threshold window (e.g. 3 failed logins in 60 s) does not span two runs.
 
-- `--follow` for growing and rotated files
-- stdin (`-`) and gzip input
-- findings printed as they happen (JSON Lines)
-- memory bounds for processes running for days
-- a warning when the log format seems to have changed (many malformed lines)
+A live mode is planned for later but not implemented yet: [US-10](development-plan/US-10-continuous-production-mode.md). It covers `--follow` with log rotation, stdin and gzip input, findings printed as they happen, memory bounds for long-running processes, and a warning when the log format seems to have changed.
 
 At larger scale this tool is the detection step, not the whole pipeline. A log shipper (e.g. Vector, Fluent Bit) would feed it, work would be split by source IP across instances, and the JSON output would go into a SIEM.
 
@@ -326,8 +322,9 @@ At larger scale this tool is the detection step, not the whole pipeline. A log s
 - **auth.log has no year or timezone.** The year comes from `--year`, and UTC is assumed. Logs that cross New Year get the wrong year.
 - **Files are not merged by time.** Each file is assumed to be in time order. Activity across files is linked by IP/user, not by exact timing.
 - **Rule-based only.** There are no allow-lists for trusted networks, no IP reputation and no anomaly scoring.
+- **Batch only for now.** No live/follow mode yet; continuous use means scheduled runs.
 - **Next steps:**
-  - US-10 (continuous mode)
+  - [US-10](development-plan/US-10-continuous-production-mode.md): continuous mode (planned, implementation deferred)
   - more formats (nginx combined, journald JSON)
   - property-based tests (Hypothesis) and automated mutation testing (mutmut)
 
@@ -337,7 +334,7 @@ This project was built with Claude Code (Anthropic) as a pair programmer. The fu
 
 How the work was split:
 
-- **Planning:** I asked for user stories with tasks and detailed descriptions (no epics). The AI wrote [`development-plan/`](development-plan/). I reviewed it, asked how the "Production Context" requirement is covered, and had US-10 added.
+- **Planning:** I asked for user stories with tasks and detailed descriptions (no epics). The AI wrote [`development-plan/`](development-plan/). I reviewed it, asked how the "Production Context" requirement is covered, and had US-10 (continuous mode) added. US-10 stays in the plan, but its implementation is not needed for now.
 - **Implementation:** one story at a time (US-01 → US-08), with a commit after each. The expected findings for the sample logs were worked out line by line before any detection code was written. They became the e2e test oracle.
 - **Steering:** I made the decisions along the way, e.g. dropping CI in favour of local test runs.
 - **Checks on AI output:**

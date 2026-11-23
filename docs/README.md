@@ -14,7 +14,7 @@ Start here before changing anything in this repository. These pages describe how
 | [development.md](development.md) | Always: environment, commands, conventions, workflow with the user, gotchas |
 | [testing.md](testing.md) | Before changing behaviour: test map, the expected results that must change together |
 | [extending.md](extending.md) | When adding a rule, event field, log format, CLI flag or report field |
-| [status.md](status.md) | Before starting new work: what is done, what is next (US-10), known limitations, where code differs from the plan |
+| [status.md](status.md) | Before starting new work: what is done, what is still open (incl. deferred US-10), known limitations, where code differs from the plan |
 
 ## Ten things to know before you start
 

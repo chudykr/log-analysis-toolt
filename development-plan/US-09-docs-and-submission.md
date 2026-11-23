@@ -1,6 +1,6 @@
 # US-09: Understand and submit the tool
 
-**Estimate:** S · **Depends on:** US-07, US-10 (README sections from US-04, US-08 and US-10 are merged here)
+**Estimate:** S · **Depends on:** US-07 (README sections from US-04 and US-08 are merged here)
 
 ## Story
 
@@ -28,7 +28,7 @@ The assessment requires a public GitHub repo with (1) the solution and a README 
 6. **Writing your own rules**: the schema and examples (from T-04.4)
 7. **How it works**: a short pipeline diagram `read → parse → detect → correlate → report` with one sentence per stage, plus the design decisions D1–D12 in brief
 8. **Testing approach**: test levels, how to run them (`pytest`, `pytest -m "not slow"`, coverage), the e2e cases, and the false-positive guards (from US-08)
-9. **Production notes** (from T-10.9): streaming and flat memory, bounded buffers, `--follow` / stdin / gzip, JSON Lines output, the format-change warning, exit codes for automation, adding a parser for a new format, and how to scale beyond one machine
+9. **Production notes**: streaming and flat memory, bounded buffers, exit codes and JSON for automation, continuous use through scheduled runs (live mode planned in US-10, not implemented yet), adding a parser for a new format, and how to scale beyond one machine
 10. **Limitations and future work**: no year or timezone in syslog, no state saved between restarts, no strict time-merge of live files, allow-lists, Hypothesis and mutation testing, more formats (nginx combined, journald JSON)
 11. **AI usage**: where the transcript is and a short note on how AI was used (planning with user stories, implementation, test design) and what was checked by hand
 

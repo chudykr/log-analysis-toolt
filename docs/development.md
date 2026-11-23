@@ -25,7 +25,7 @@ There is **no CI** (the user decided this; do not add `.github/workflows` or bad
 
 ## How the user works
 
-- Work goes **story by story** from `development-plan/` (`US-01` … `US-10`). The user says "continue with US-xx"; at the end they say "commit US-xx".
+- Work goes **story by story** from `development-plan/` (`US-01` … `US-10`; US-10 is planned but deferred: implement it only when the user asks). The user says "continue with US-xx"; at the end they say "commit US-xx".
 - **Commit only when asked. Never push.** Stage only the files of the story; never stage `.idea/`.
 - Commit message style used so far:
 

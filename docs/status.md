@@ -15,7 +15,7 @@
 | US-07 Actionable report | done | `9fb8c7e` |
 | US-08 Tests (e2e, volume, coverage gate) | done; CI dropped at the user's request | `3cdaa9b` |
 | US-09 README and submission | done except the items below | `d9630fd` |
-| US-10 Continuous production mode | **not started** | – |
+| US-10 Continuous production mode | **planned, implementation deferred** (user decision, 2026-11-23) | – |
 
 Still open from US-09:
 
@@ -23,9 +23,11 @@ Still open from US-09:
 2. **Submission (user's task):** merge `task` into `master`, make the GitHub repository public, send the link.
 3. Python 3.11 has not been tested locally (only 3.12 and the 3.9 rejection path).
 
-## Next: US-10 (continuous mode)
+## US-10 (continuous mode): planned, implementation deferred
 
-Spec: [`development-plan/US-10-continuous-production-mode.md`](../development-plan/US-10-continuous-production-mode.md). The README "Production notes" lists these features as planned; update it when they exist. Notes for implementing it against the current code:
+US-10 stays in the plan, but the user decided on 2026-11-23 that its implementation is **not needed for now**. Do not start it unless the user asks. Until then the tool is batch-only and the README "Production notes" describe continuous use as scheduled runs; update that section when US-10 is built.
+
+Spec: [`development-plan/US-10-continuous-production-mode.md`](../development-plan/US-10-continuous-production-mode.md). Notes for implementing it against the current code:
 
 | US-10 item | Where it plugs in | Watch out |
 |---|---|---|
@@ -41,6 +43,7 @@ Spec: [`development-plan/US-10-continuous-production-mode.md`](../development-pl
 - auth.log has no year/timezone: `--year` and UTC are assumed; logs crossing New Year get the wrong year.
 - Files are not merged by time; detector state is per file and correlation links by IP/user only.
 - Rule-based only: no allow-lists, IP reputation or anomaly scoring.
+- Batch only until US-10 is implemented; with scheduled runs a threshold window does not span two runs.
 - Single process; scaling (log shipper, split by source IP, JSON into a SIEM) is described in the README, not built.
 
 ## Where the code differs from the plan

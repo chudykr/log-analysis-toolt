@@ -64,5 +64,5 @@ Before analysis, check every path exists and is a readable file; collect all pro
 
 ## Out of scope
 
-- Reading from stdin, gzip input and following a growing file (see US-10)
+- Reading from stdin, gzip input and following a growing file (see US-10, planned for later)
 - Globbing inside the tool (the shell expands `*.log`)
