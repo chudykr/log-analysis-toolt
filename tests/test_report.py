@@ -14,16 +14,21 @@ from loganalyzer.report import (
     render_json,
     render_text,
 )
+from loganalyzer.parsers import ParseContext, parse_stream, read_lines
 from loganalyzer.rules import load_rules
-from tests.conftest import SAMPLES_DIR, T0, make_event, parse_samples
+from tests.conftest import REPO_ROOT, SAMPLE_YEAR, SAMPLES_DIR, T0, make_event
 
-FILES = [str(SAMPLES_DIR / "webserver.log"), str(SAMPLES_DIR / "auth.log")]
+# Relative paths, as a user types them. Absolute paths would make line lengths (and so clipping)
+# depend on where the repository is checked out.
+FILES = ["samples/webserver.log", "samples/auth.log"]
 
 
 @pytest.fixture(scope="module")
 def sample():
-    events, stats = parse_samples("webserver.log", "auth.log")
-    detector = run(events, load_rules())
+    with pytest.MonkeyPatch.context() as patch:
+        patch.chdir(REPO_ROOT)
+        stats = ParseStats()
+        detector = run(parse_stream(read_lines(FILES), ParseContext(SAMPLE_YEAR), stats), load_rules())
     return correlate(detector.results(), detector.context), stats
 
 

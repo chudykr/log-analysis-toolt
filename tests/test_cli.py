@@ -230,3 +230,28 @@ def test_read_error_after_start_is_an_input_error(write_log, monkeypatch, capsys
     captured = capsys.readouterr()
     assert f"error: cannot read {path}: Input/output error" in captured.err
     assert captured.out == ""
+
+
+@pytest.mark.parametrize("version, supported", [((3, 9, 6), False), ((3, 10, 0), False),
+                                                ((3, 11, 0), True), ((3, 13, 1), True)])
+def test_python_version_check(version, supported):
+    from loganalyzer import python_supported
+
+    assert python_supported(version) is supported
+
+
+OLD_PYTHON = "/usr/bin/python3"
+
+
+@pytest.mark.skipif(
+    not os.path.exists(OLD_PYTHON)
+    or subprocess.run([OLD_PYTHON, "-c", "import sys; sys.exit(sys.version_info >= (3, 11))"]).returncode,
+    reason="needs an interpreter older than 3.11 at /usr/bin/python3",
+)
+def test_old_python_gets_a_clear_message(samples_dir):
+    result = subprocess.run([OLD_PYTHON, "-m", "loganalyzer", str(samples_dir / "auth.log")],
+                            cwd=REPO_ROOT, capture_output=True, text=True, timeout=30)
+
+    assert result.returncode == EXIT_ERROR
+    assert "loganalyzer needs Python 3.11 or newer" in result.stderr
+    assert "Traceback" not in result.stderr
