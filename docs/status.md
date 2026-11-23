@@ -19,7 +19,7 @@
 
 Still open from US-09:
 
-1. **AI transcript:** the user exports the session with `/export` into `ai-transcript/session.md`. Before it is committed, remove e-mail addresses and replace `/Users/<name>/` paths with `~/`, then check with `grep -nE "@[a-z0-9.-]+\.[a-z]{2,}|/Users/" ai-transcript/session.md`. `ai-transcript/README.md` describes the file.
+1. **AI transcript:** exported with `/export` to `ai-transcript/session.txt`, home paths replaced. If the session continues and is exported again, overwrite `session.txt`, then repeat the clean-up: replace `/Users/<name>` with `~` and `-Users-<name>-` with `-Users-<user>-`, and check with `grep -nE "@[a-z0-9.-]+\.[a-z]{2,}|/Users/" ai-transcript/session.txt` (only `/Users/<name>/` placeholders may remain).
 2. **Submission (user's task):** merge `task` into `master`, make the GitHub repository public, send the link.
 3. Python 3.11 has not been tested locally (only 3.12 and the 3.9 rejection path).
 
